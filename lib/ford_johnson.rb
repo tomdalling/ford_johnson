@@ -81,7 +81,7 @@ module FordJohnson
     # This is the secret sauce of the whole algorithm.
     def binary_insert_idx(new_element, sorted_elements, group_size)
       min_idx = 0
-      max_idx = group_size
+      max_idx = [group_size+1, sorted_elements.size].min
 
       while min_idx != max_idx
         middle_idx = (min_idx + max_idx) / 2
@@ -122,6 +122,10 @@ module FordJohnson
       def <=>(other)
         # TODO: custom comparator
         greater <=> other.greater
+      end
+
+      def inspect
+        "#<Pair #{lesser.inspect} #{greater.inspect}>"
       end
 
       def swap!

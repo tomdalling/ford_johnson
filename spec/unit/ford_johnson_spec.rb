@@ -22,4 +22,11 @@ RSpec.describe FordJohnson do
       end
     end
   end
+
+  it 'sorts big inputs' do
+    100.times do
+      input = Array.new(5) { rand.round(2) }.freeze
+      expect(subject.sort(input)).to eq(input.sort)
+    end
+  end
 end
