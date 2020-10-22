@@ -30,17 +30,11 @@ module FordJohnson
     # First insertion from lesser_chain is always at the front
     greater_chain.unshift(lesser_chain.shift)
 
-    # Insert all lesser_chain elements into greater_chain, in specially sized
-    # groups, reversed, using an optimised binary search.
-    group_size_enumerator = make_group_size_enumerator
-    until lesser_chain.empty?
-      group_size = group_size_enumerator.next
-      group = lesser_chain.shift(group_size)
-
-      group.reverse.each do |element|
-        idx = binary_insert_idx(element, greater_chain, group_size)
-        greater_chain.insert(idx, element)
-      end
+    # Insert all lesser_chain elements into greater_chain, in a special order,
+    # using an optimised binary search
+    each_insertion_for(lesser_chain) do |element, max_idx|
+      idx = binary_insert_idx(element, greater_chain, max_idx)
+      greater_chain.insert(idx, element)
     end
 
     # Greater chain now contains all elements.
@@ -49,39 +43,66 @@ module FordJohnson
 
   private
 
-    # From Wikipedia: "There are two elements [...] in the first group, and the
-    # sums of sizes of every two adjacent groups form a sequence of powers of
-    # two."
     #
-    # Goes like: 2, 2, 6, 10, 22, 42, 86, 170, 342, 682, 1366, 2730, 5462, ...
+    # Yields successive, specially-ordered pairs of [element, max_insertion_idx]
     #
-    # This is the same as the difference between adjacent values in the
-    # Jacobsthal sequence.
+    # This is the secret sauce of the whole algorithm.
     #
-    # Can only use the first 63 values from this enumerator. The 64th value
-    # overflows a 64bit integer, and Ruby can't handle array indices that big,
-    # as of v2.7.2. Nobody should be using this gem to sort anywhere near that
-    # many elements anyway.
+    # `max_insertion_idx` is always one less than a power of two. This results
+    # in an optimal binary search that requires the minumum number of
+    # comparisons.
     #
-    def make_group_size_enumerator
-      Enumerator.new do |yielder|
-        previous_value = 0
-        power = 1
+    # To achieve this, elements must be inserted in groups that share the same
+    # max insertion idx. However, inserting an element _increases_ the max
+    # insertion idx by one for each following element. To avoid this increase,
+    # elements within a group must be inserted in reverse order. This still
+    # increases the max insertion idx for the next group, but this algorithm
+    # increases it in such a way that it always lands another value one less
+    # than a power of two.
+    #
+    # The max insertion idxs form the series:
+    #
+    #     3, 7, 15, 31, 63, ...
+    #
+    # The group sizes form the series:
+    #
+    #     2, 2, 6, 10, 22, 42, 86, ...
+    #
+    # Therefore, for the input [e0, e1, e2, ...], this method yields
+    # [eX, max_idx] pairs like so:
+    #
+    #     [e1,3] [e0,3] [e3,7] [e2,7] [e9,15] [e8,15] [e7,15] ... [e4,15] ...
+    #     |  group 1  | |  group 2  | |              group 3            | ...
+    #
+    # As an interesting side note: the group sizes series happens to be the
+    # difference between adjacent pairs in the Jacobsthal series:
+    # https://oeis.org/A001045
+    #
+    def each_insertion_for(elements_to_insert)
+      group_start_idx = 0
+      previous_group_size = 0
+      power = 1
 
-        loop do
-          next_value = 2**power - previous_value
-          yielder << next_value
-          previous_value = next_value
-          power += 1
+      while group_start_idx < elements_to_insert.size
+        group_size = 2**power - previous_group_size
+        group_last_idx = clamp_idx(group_start_idx + group_size - 1, elements_to_insert)
+        max_insertion_idx = 2**(power+1) - 1
+
+        group_last_idx.downto(group_start_idx).each do |idx|
+          yield [elements_to_insert[idx], max_insertion_idx]
         end
+
+        group_start_idx += group_size
+        previous_group_size = group_size
+        power += 1
       end
     end
 
     # Group size determines max_idx, restricting the search range.
     # This is the secret sauce of the whole algorithm.
-    def binary_insert_idx(new_element, sorted_elements, group_size)
+    def binary_insert_idx(new_element, sorted_elements, max_idx)
       min_idx = 0
-      max_idx = [group_size+1, sorted_elements.size].min
+      max_idx = clamp_idx(max_idx, sorted_elements)
 
       while min_idx != max_idx
         middle_idx = (min_idx + max_idx) / 2
@@ -96,6 +117,14 @@ module FordJohnson
       end
 
       min_idx
+    end
+
+    def clamp_idx(idx, array)
+      if idx < array.size
+        idx
+      else
+        array.size - 1
+      end
     end
 
     class Pair
