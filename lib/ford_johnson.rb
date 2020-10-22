@@ -3,29 +3,32 @@ require_relative 'ford_johnson/version'
 module FordJohnson
   extend self
 
-  def sort(elements)
+  def sort(elements, &comparator)
     # Empty arrays and one-element arrays do not need to be sorted.
     return elements if elements.size <= 1
+
+    comparator ||= DEFAULT_COMPARATOR
 
     # Break the input array into pairs and stragglers. Odd-sized inputs will
     # have a single straggler, and even-sized inputs will have no stragglers.
     pairs, stragglers = Pair.all_from(elements)
 
     # Sort within each pair.
-    pairs.each do |p|
-      # TODO: custom comparator
-      p.swap! if p.lesser > p.greater
-    end
+    pairs
+      .select { |p| greater_than?(p.left, p.right, comparator) }
+      .each(&:swap!)
 
     # Sort between pairs, recursively. Pairs sort using their greater value.
-    sorted_pairs = sort(pairs)
+    sorted_pairs = sort(pairs) do |left, right|
+      comparator.call(left.right, right.right)
+    end
 
     # Split into 'greater' and 'lesser' chains. The greater chain is also known
     # as "S" or the "main" chain. The lesser chain doesn't really have a name---
     # I've seen it called "prep" at least once. Stragglers go on the end of the
     # lesser chain (this is important because it affects insertion order later).
-    greater_chain = sorted_pairs.map(&:greater)
-    lesser_chain = sorted_pairs.map(&:lesser) + stragglers
+    greater_chain = sorted_pairs.map(&:right)
+    lesser_chain = sorted_pairs.map(&:left) + stragglers
 
     # First insertion from lesser_chain is always at the front
     greater_chain.unshift(lesser_chain.shift)
@@ -33,7 +36,7 @@ module FordJohnson
     # Insert all lesser_chain elements into greater_chain, in a special order,
     # using an optimised binary search
     each_insertion_for(lesser_chain) do |element, max_idx|
-      idx = binary_insert_idx(element, greater_chain, max_idx)
+      idx = binary_insert_idx(element, greater_chain, max_idx, comparator)
       greater_chain.insert(idx, element)
     end
 
@@ -42,6 +45,12 @@ module FordJohnson
   end
 
   private
+
+    DEFAULT_COMPARATOR = ->(left, right) { left <=> right }
+
+    def greater_than?(left, right, comparator)
+      comparator.call(left, right) > 0
+    end
 
     #
     # Yields successive, specially-ordered pairs of [element, max_insertion_idx]
@@ -100,14 +109,13 @@ module FordJohnson
 
     # Group size determines max_idx, restricting the search range.
     # This is the secret sauce of the whole algorithm.
-    def binary_insert_idx(new_element, sorted_elements, max_idx)
+    def binary_insert_idx(new_element, sorted_elements, max_idx, comparator)
       min_idx = 0
       max_idx = clamp_idx(max_idx, sorted_elements)
 
       while min_idx != max_idx
         middle_idx = (min_idx + max_idx) / 2
-        # TODO: custom comparator
-        if new_element > sorted_elements[middle_idx]
+        if greater_than?(new_element, sorted_elements[middle_idx], comparator)
           # must be somewhere after middle_idx (right branch)
           min_idx = middle_idx + 1
         else
@@ -130,37 +138,36 @@ module FordJohnson
     class Pair
       include Comparable
 
-      attr_reader :lesser, :greater
+      attr_reader :left, :right
 
       def self.all_from(elements)
         doublets = elements.each_slice(2).to_a
         stragglers = (elements.size.odd? ? doublets.pop : [])
-        pairs = doublets.map { |lesser, greater| new(lesser, greater) }
+        pairs = doublets.map { |left, right| new(left, right) }
         [pairs, stragglers]
       end
 
-      def initialize(lesser, greater)
-        @lesser = lesser
-        @greater = greater
+      def initialize(left, right)
+        @left = left
+        @right = right
       end
 
       def to_a
-        [lesser, greater]
-      end
-
-      def <=>(other)
-        # TODO: custom comparator
-        greater <=> other.greater
+        [left, right]
       end
 
       def inspect
-        "#<Pair #{lesser.inspect} #{greater.inspect}>"
+        "#<Pair #{left.inspect} #{right.inspect}>"
+      end
+
+      def to_s
+        inspect
       end
 
       def swap!
-        tmp = @lesser
-        @lesser = @greater
-        @greater = tmp
+        tmp = @left
+        @left = @right
+        @right = tmp
         nil
       end
     end
