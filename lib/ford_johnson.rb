@@ -24,22 +24,23 @@ module FordJohnson
       comparator.call(left.last, right.last)
     end
 
-    # Split into 'greater' and 'lesser' chains. The greater chain is also known
-    # as "S" or the "main" chain. The lesser chain doesn't really have a name---
-    # I've seen it called "prep" at least once. Stragglers go on the end of the
-    # lesser chain (this is important because it affects insertion order).
-    greater_chain = sorted_pairs.map(&:last)
-    lesser_chain = sorted_pairs.map(&:first) + stragglers
+    # Split pairs into 'main chain' and 'pending'. The main chain is made up of
+    # all the greater (last) values of the pairs, which are sorted. Pending
+    # contains all the lesser (first) values of the pairs, which share the same
+    # order as the main chain, but are not sorted. Stragglers go on the end of
+    # pending (this is important because it affects insertion order).
+    main_chain = sorted_pairs.map(&:last)
+    pending = sorted_pairs.map(&:first) + stragglers
 
-    # Insert all lesser_chain elements into greater_chain, in a special order,
+    # Insert all pending elements into main_chain, in a special order,
     # using an optimised binary search
-    each_insertion_for(lesser_chain) do |element, max_idx|
-      idx = binary_insert_idx(element, greater_chain, max_idx, comparator)
-      greater_chain.insert(idx, element)
+    each_insertion_for(pending) do |element, max_idx|
+      idx = binary_insert_idx(element, main_chain, max_idx, comparator)
+      main_chain.insert(idx, element)
     end
 
-    # Greater chain now contains all elements.
-    greater_chain
+    # Main chain now contains all elements.
+    main_chain
   end
 
   private
@@ -69,10 +70,10 @@ module FordJohnson
     #
     # There is a special case for the first insertion. It is guaranteed to be
     # inserted at index zero, and so doesn't require a binary search. The first
-    # elemement of both the lesser and greater chains belong to the same pair.
-    # Because the greater chain is sorted, and the first element is the higher
+    # elemement of both the main chain and pending belong to the same pair.
+    # Because the main chain is sorted, and the first element is the higher
     # value of a pair, then the lower value of the pair must be lower than every
-    # other element in the greater chain. Returning a max insertion idx of zero
+    # other element in the main chain. Returning a max insertion idx of zero
     # short-circuits the whole binary search algorithm.
     #
     # The max insertion idxs form the series:
@@ -93,23 +94,23 @@ module FordJohnson
     # difference between adjacent pairs in the Jacobsthal series:
     # https://oeis.org/A001045
     #
-    def each_insertion_for(lesser_chain)
-      yield [lesser_chain.first, 0]
+    def each_insertion_for(pending)
+      yield [pending.first, 0]
 
       group_start_idx = 1 # skip over that first inserted element
       previous_group_size = 0
       power = 1
 
-      while group_start_idx < lesser_chain.size
+      while group_start_idx < pending.size
         group_size = 2**power - previous_group_size
         group_last_idx = [
           group_start_idx + group_size - 1,
-          lesser_chain.size - 1,
-        ].min # idx must not go off the end of lesser_chain
+          pending.size - 1,
+        ].min # idx must not go off the end of pending
         max_insertion_idx = 2**(power+1) - 1
 
         group_last_idx.downto(group_start_idx).each do |idx|
-          yield [lesser_chain[idx], max_insertion_idx]
+          yield [pending[idx], max_insertion_idx]
         end
 
         group_start_idx += group_size
