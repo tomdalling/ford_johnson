@@ -94,7 +94,10 @@ module FordJohnson
 
       while group_start_idx < elements_to_insert.size
         group_size = 2**power - previous_group_size
-        group_last_idx = clamp_idx(group_start_idx + group_size - 1, elements_to_insert)
+        group_last_idx = [
+          group_start_idx + group_size - 1,
+          elements_to_insert.size - 1,
+        ].min # idx must not go off the end of elements_to_insert
         max_insertion_idx = 2**(power+1) - 1
 
         group_last_idx.downto(group_start_idx).each do |idx|
@@ -111,7 +114,7 @@ module FordJohnson
     # This is the secret sauce of the whole algorithm.
     def binary_insert_idx(new_element, sorted_elements, max_idx, comparator)
       min_idx = 0
-      max_idx = clamp_idx(max_idx, sorted_elements)
+      max_idx = [max_idx, sorted_elements.size].min # can't go past end of sorted_elements
 
       while min_idx != max_idx
         middle_idx = (min_idx + max_idx) / 2
